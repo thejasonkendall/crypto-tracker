@@ -4,11 +4,14 @@ from pulumi_aws import ec2, get_availability_zones
 # Get the AWS region from Pulumi config
 config = pulumi.Config()
 region = config.get('region') or 'us-east-1'
+vpc_cidr = config.require('vpc_cidr')  # Not a secret
+subnet_cidr = config.require('subnet_cidr')  # Not a secret
+my_ip = config.require_secret('my_ip')  # This is a secret
 
 # Create a new VPC
 vpc = ec2.Vpc(
     'btc-tracker-vpc',
-    cidr_block='10.0.0.0/16',
+    cidr_block=vpc_cidr,
     enable_dns_hostnames=True,
     enable_dns_support=True,
     tags={'Name': 'btc-tracker-vpc'}
@@ -25,7 +28,7 @@ igw = ec2.InternetGateway(
 public_subnet = ec2.Subnet(
     'btc-tracker-subnet',
     vpc_id=vpc.id,
-    cidr_block='10.0.1.0/24',
+    cidr_block=subnet_cidr,
     availability_zone=get_availability_zones().names[0],
     map_public_ip_on_launch=True,
     tags={'Name': 'btc-tracker-subnet'}
@@ -35,12 +38,10 @@ public_subnet = ec2.Subnet(
 route_table = ec2.RouteTable(
     'btc-tracker-rt',
     vpc_id=vpc.id,
-    routes=[
-        ec2.RouteTableRouteArgs(
-            cidr_block='0.0.0.0/0',
-            gateway_id=igw.id
-        )
-    ],
+    routes=[{  # Changed to dictionary instead of RouteTableRouteArgs
+        'cidr_block': '0.0.0.0/0',
+        'gateway_id': igw.id
+    }],
     tags={'Name': 'btc-tracker-rt'}
 )
 
@@ -51,7 +52,6 @@ route_table_association = ec2.RouteTableAssociation(
     route_table_id=route_table.id
 )
 
-# Create a security group
 security_group = ec2.SecurityGroup(
     'btc-tracker-sg',
     description='Security group for BTC tracker instance',
@@ -62,14 +62,14 @@ security_group = ec2.SecurityGroup(
             protocol='tcp',
             from_port=22,
             to_port=22,
-            cidr_blocks=['173.187.119.75/32']  # Consider restricting to your IP
+            cidr_blocks=my_ip.apply(lambda ip: [ip])  # Transform secret into list
         ),
         # Rails application
         ec2.SecurityGroupIngressArgs(
             protocol='tcp',
             from_port=3000,
             to_port=3000,
-            cidr_blocks=['173.187.119.75/32']
+            cidr_blocks=my_ip.apply(lambda ip: [ip])  # Transform secret into list
         )
     ],
     egress=[
