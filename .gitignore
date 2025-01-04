@@ -1,0 +1,14 @@
+# Pulumi
+.pulumi/
+*.pyc
+__pycache__/
+Pulumi.*.yaml
+
+# Python
+venv/
+*.pyc
+__pycache__/
+
+# Editor/IDE
+.vscode/
+.idea/
