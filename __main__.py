@@ -112,7 +112,7 @@ instance = ec2.Instance(
     vpc_security_group_ids=[security_group.id],
     key_name=key_pair.key_name,
     root_block_device={
-        'volumeSize': 20,  # 8GB is sufficient for your needs
+        'volumeSize': 20,  # Increased to 40GB for Guix installation
         'volumeType': 'gp3'
     },
     tags={'Name': 'btc-tracker'},
@@ -120,8 +120,8 @@ instance = ec2.Instance(
 # Update system packages
 dnf update -y
 
-# Install basic tools
-dnf install -y git wget
+# Install basic tools and dependencies
+dnf install -y git wget gnupg2 gpg-agent pinentry
 
 # Install required dependencies for Guix
 dnf install -y which locales openssl ca-certificates
@@ -135,27 +135,71 @@ for i in `seq -w 1 10`; do
             "guixbuilder$i";
 done
 
-# Download and install Guix binary directly
-cd /tmp
-wget https://ftp.gnu.org/gnu/guix/guix-binary-1.4.0.x86_64-linux.tar.xz
-wget https://ftp.gnu.org/gnu/guix/guix-binary-1.4.0.x86_64-linux.tar.xz.sig
+# Initialize GPG
+mkdir -p /root/.gnupg
+chmod 700 /root/.gnupg
+echo "allow-loopback-pinentry" > /root/.gnupg/gpg-agent.conf
+echo "pinentry-mode loopback" > /root/.gnupg/gpg.conf
 
-# Extract and install
-tar xf guix-binary-1.4.0.x86_64-linux.tar.xz
-cd guix-binary-1.4.0.x86_64-linux
-./guix-binary-1.4.0.x86_64-linux.sh --system
+# Start gpg-agent
+gpg-agent --daemon
 
-# Add Guix to system-wide PATH
-echo 'GUIX_PROFILE="/root/.config/guix/current"' >> /etc/profile.d/guix.sh
-echo '. "$GUIX_PROFILE/etc/profile"' >> /etc/profile.d/guix.sh
+# Import required GPG keys
+wget "https://sv.gnu.org/people/viewgpg.php?user_id=127547" -O maxim.key
+wget "https://sv.gnu.org/people/viewgpg.php?user_id=15145" -O ludo.key
+gpg --batch --yes --import maxim.key
+gpg --batch --yes --import ludo.key
 
-# Initialize Guix
-source /etc/profile.d/guix.sh
-guix pull
+# Download and run Guix installer
+wget https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
+chmod +x guix-install.sh
+yes '' | ./guix-install.sh
 
 # Clean up
-cd /tmp
-rm -rf guix-binary-1.4.0.x86_64-linux*
+rm -f maxim.key ludo.key
+
+# Install glibc-locales and set up environment for ec2-user
+su - ec2-user -c "guix package -i glibc-locales"
+
+# Configure locale settings for both root and ec2-user
+cat >> /root/.bashrc <<EOL
+export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+EOL
+
+cat >> /home/ec2-user/.bashrc <<EOL
+export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+EOL
+
+# Set proper ownership of ec2-user's .bashrc
+chown ec2-user:ec2-user /home/ec2-user/.bashrc
+
+# Source the environment for the current session
+export GUIX_LOCPATH="/home/ec2-user/.guix-profile/lib/locale"
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+
+# Install Ruby, Rails, and PostgreSQL as ec2-user
+su - ec2-user -c "guix package -i ruby ruby-rails postgresql"
+
+# Initialize PostgreSQL - now with proper environment sourcing
+su - ec2-user -c "bash -l -c 'mkdir -p ~/postgres-data && initdb -D ~/postgres-data'"
+
+# Start PostgreSQL with proper environment
+su - ec2-user -c "bash -l -c 'postgres -D ~/postgres-data &'"
+
+# Wait for PostgreSQL to start
+sleep 5
+
+# Create database user with proper environment
+su - ec2-user -c "bash -l -c 'createuser -s ec2-user'"
+
+# Source the new environment variables
+source /root/.bashrc
+
 ''')
 
 # Export useful information
