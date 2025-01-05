@@ -120,13 +120,13 @@ instance = ec2.Instance(
 echo "########## Update system packages"
 dnf update -y
 
-echo "########## Install basic tools and dependencies"
-dnf install -y git wget gnupg2 pinentry pinentry-curses
+echo "USER_DATA_LOG ########## Install basic tools and dependencies"
+dnf install -y --allowerasing git wget gnupg2 pinentry pinentry-curses
 
-echo "########## Install required dependencies for Guix"
+echo "USER_DATA_LOG ########## Install required dependencies for Guix"
 dnf install -y which glibc-langpack-en openssl ca-certificates
 
-echo "########## Create the guix user and group"
+echo "USER_DATA_LOG ########## Create the guix user and group"
 groupadd --system guixbuild
 for i in `seq -w 1 10`; do
     useradd -g guixbuild -G guixbuild           \
@@ -135,70 +135,70 @@ for i in `seq -w 1 10`; do
             "guixbuilder$i";
 done
 
-echo "########## Initialize GPG"
+echo "USER_DATA_LOG ########## Initialize GPG"
 mkdir -p /root/.gnupg
 chmod 700 /root/.gnupg
 echo "allow-loopback-pinentry" > /root/.gnupg/gpg-agent.conf
 echo "pinentry-mode loopback" > /root/.gnupg/gpg.conf
 
-echo "########## Start gpg-agent"
+echo "USER_DATA_LOG ########## Start gpg-agent"
 gpg-agent --daemon
 
-echo "########## Import required GPG keys"
+echo "USER_DATA_LOG ########## Import required GPG keys"
 wget "https://sv.gnu.org/people/viewgpg.php?user_id=127547" -O maxim.key
 wget "https://sv.gnu.org/people/viewgpg.php?user_id=15145" -O ludo.key
 gpg --batch --yes --import maxim.key
 gpg --batch --yes --import ludo.key
 
-echo "########## Download and run Guix installer"
+echo "USER_DATA_LOG ########## Download and run Guix installer"
 wget https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
 chmod +x guix-install.sh
 yes '' | ./guix-install.sh
 
-echo "########## Clean up"
+echo "USER_DATA_LOG ########## Clean up"
 rm -f maxim.key ludo.key
 
-echo "########## Install glibc-locales and set up environment for ec2-user"
+echo "USER_DATA_LOG ########## Install glibc-locales and set up environment for ec2-user"
 su - ec2-user -c "guix package -i glibc-locales"
 
-echo "########## Configure locale settings for root user"
+echo "USER_DATA_LOG ########## Configure locale settings for root user"
 cat >> /root/.bashrc <<EOL
 export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 EOL
 
-echo "########## Configure locale settings for ec2-user"
+echo "USER_DATA_LOG ########## Configure locale settings for ec2-user"
 cat >> /home/ec2-user/.bashrc <<EOL
 export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 EOL
 
-echo "########## Set proper ownership of ec2-user's .bashrc"
+echo "USER_DATA_LOG ########## Set proper ownership of ec2-user's .bashrc"
 chown ec2-user:ec2-user /home/ec2-user/.bashrc
 
-echo "########## Source the environment for the current session"
+echo "USER_DATA_LOG ########## Source the environment for the current session"
 export GUIX_LOCPATH="/home/ec2-user/.guix-profile/lib/locale"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 
-echo "########## Install Ruby, Rails, and PostgreSQL as ec2-user"
-# su - ec2-user -c "guix package -i ruby ruby-rails postgresql"
+echo "USER_DATA_LOG ########## Install Ruby, Rails, and PostgreSQL as ec2-user"
+su - ec2-user -c "guix package -i ruby ruby-rails postgresql"
 
-echo "########## Initialize PostgreSQL - now with proper environment sourcing"
-# su - ec2-user -c "bash -l -c 'mkdir -p ~/postgres-data && initdb -D ~/postgres-data'"
+echo "USER_DATA_LOG ########## Initialize PostgreSQL - now with proper environment sourcing"
+su - ec2-user -c "bash -l -c 'mkdir -p ~/postgres-data && initdb -D ~/postgres-data'"
 
-echo "########## Start PostgreSQL with proper environment"
+echo "USER_DATA_LOG ########## Start PostgreSQL with proper environment"
 # su - ec2-user -c "bash -l -c 'postgres -D ~/postgres-data &'"
 
-echo "########## Wait for PostgreSQL to start"
+echo "USER_DATA_LOG ########## Wait for PostgreSQL to start"
 # sleep 30
 
-echo "########## Create database user with proper environment"
+echo "USER_DATA_LOG ########## Create database user with proper environment"
 # su - ec2-user -c "bash -l -c 'createuser -s ec2-user'"
 
-echo "########## Source the new environment variables"
+echo "USER_DATA_LOG ########## Source the new environment variables"
 # source /root/.bashrc
 
 ''')
