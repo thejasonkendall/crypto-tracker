@@ -117,16 +117,16 @@ instance = ec2.Instance(
     },
     tags={'Name': 'btc-tracker'},
     user_data='''#!/bin/bash
-# Update system packages
+echo "########## Update system packages"
 dnf update -y
 
-# Install basic tools and dependencies
-dnf install -y git wget gnupg2 gpg-agent pinentry
+echo "########## Install basic tools and dependencies"
+dnf install -y git wget gnupg2 pinentry pinentry-curses
 
-# Install required dependencies for Guix
-dnf install -y which locales openssl ca-certificates
+echo "########## Install required dependencies for Guix"
+dnf install -y which glibc-langpack-en openssl ca-certificates
 
-# Create the guix user and group
+echo "########## Create the guix user and group"
 groupadd --system guixbuild
 for i in `seq -w 1 10`; do
     useradd -g guixbuild -G guixbuild           \
@@ -135,70 +135,71 @@ for i in `seq -w 1 10`; do
             "guixbuilder$i";
 done
 
-# Initialize GPG
+echo "########## Initialize GPG"
 mkdir -p /root/.gnupg
 chmod 700 /root/.gnupg
 echo "allow-loopback-pinentry" > /root/.gnupg/gpg-agent.conf
 echo "pinentry-mode loopback" > /root/.gnupg/gpg.conf
 
-# Start gpg-agent
+echo "########## Start gpg-agent"
 gpg-agent --daemon
 
-# Import required GPG keys
+echo "########## Import required GPG keys"
 wget "https://sv.gnu.org/people/viewgpg.php?user_id=127547" -O maxim.key
 wget "https://sv.gnu.org/people/viewgpg.php?user_id=15145" -O ludo.key
 gpg --batch --yes --import maxim.key
 gpg --batch --yes --import ludo.key
 
-# Download and run Guix installer
+echo "########## Download and run Guix installer"
 wget https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
 chmod +x guix-install.sh
 yes '' | ./guix-install.sh
 
-# Clean up
+echo "########## Clean up"
 rm -f maxim.key ludo.key
 
-# Install glibc-locales and set up environment for ec2-user
+echo "########## Install glibc-locales and set up environment for ec2-user"
 su - ec2-user -c "guix package -i glibc-locales"
 
-# Configure locale settings for both root and ec2-user
+echo "########## Configure locale settings for root user"
 cat >> /root/.bashrc <<EOL
 export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 EOL
 
+echo "########## Configure locale settings for ec2-user"
 cat >> /home/ec2-user/.bashrc <<EOL
 export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 EOL
 
-# Set proper ownership of ec2-user's .bashrc
+echo "########## Set proper ownership of ec2-user's .bashrc"
 chown ec2-user:ec2-user /home/ec2-user/.bashrc
 
-# Source the environment for the current session
+echo "########## Source the environment for the current session"
 export GUIX_LOCPATH="/home/ec2-user/.guix-profile/lib/locale"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 
-# Install Ruby, Rails, and PostgreSQL as ec2-user
-su - ec2-user -c "guix package -i ruby ruby-rails postgresql"
+echo "########## Install Ruby, Rails, and PostgreSQL as ec2-user"
+# su - ec2-user -c "guix package -i ruby ruby-rails postgresql"
 
-# Initialize PostgreSQL - now with proper environment sourcing
-su - ec2-user -c "bash -l -c 'mkdir -p ~/postgres-data && initdb -D ~/postgres-data'"
+echo "########## Initialize PostgreSQL - now with proper environment sourcing"
+# su - ec2-user -c "bash -l -c 'mkdir -p ~/postgres-data && initdb -D ~/postgres-data'"
 
-# Start PostgreSQL with proper environment
-su - ec2-user -c "bash -l -c 'postgres -D ~/postgres-data &'"
+echo "########## Start PostgreSQL with proper environment"
+# su - ec2-user -c "bash -l -c 'postgres -D ~/postgres-data &'"
 
-# Wait for PostgreSQL to start
-sleep 5
+echo "########## Wait for PostgreSQL to start"
+# sleep 30
 
-# Create database user with proper environment
-su - ec2-user -c "bash -l -c 'createuser -s ec2-user'"
+echo "########## Create database user with proper environment"
+# su - ec2-user -c "bash -l -c 'createuser -s ec2-user'"
 
-# Source the new environment variables
-source /root/.bashrc
+echo "########## Source the new environment variables"
+# source /root/.bashrc
 
 ''')
 
