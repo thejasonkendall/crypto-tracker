@@ -38,7 +38,7 @@ public_subnet = ec2.Subnet(
 route_table = ec2.RouteTable(
     'btc-tracker-rt',
     vpc_id=vpc.id,
-    routes=[{  # Changed to dictionary instead of RouteTableRouteArgs
+    routes=[{
         'cidr_block': '0.0.0.0/0',
         'gateway_id': igw.id
     }],
@@ -62,14 +62,14 @@ security_group = ec2.SecurityGroup(
             protocol='tcp',
             from_port=22,
             to_port=22,
-            cidr_blocks=my_ip.apply(lambda ip: [ip])  # Transform secret into list
+            cidr_blocks=my_ip.apply(lambda ip: [ip])
         ),
         # Rails application
         ec2.SecurityGroupIngressArgs(
             protocol='tcp',
             from_port=3000,
             to_port=3000,
-            cidr_blocks=my_ip.apply(lambda ip: [ip])  # Transform secret into list
+            cidr_blocks=my_ip.apply(lambda ip: [ip])
         )
     ],
     egress=[
@@ -96,10 +96,10 @@ ami = ec2.get_ami(
     ]
 )
 
-# Create an EC2 key pair (make sure to save the private key)
+# Create an EC2 key pair
 key_pair = ec2.KeyPair(
     'btc-tracker-key',
-    public_key=config.require('public_key'),  # Add your public key to Pulumi config
+    public_key=config.require('public_key'),
     tags={'Name': 'btc-tracker-key'}
 )
 
@@ -112,95 +112,53 @@ instance = ec2.Instance(
     vpc_security_group_ids=[security_group.id],
     key_name=key_pair.key_name,
     root_block_device={
-        'volumeSize': 20,  # Increased to 40GB for Guix installation
+        'volumeSize': 20,
         'volumeType': 'gp3'
     },
     tags={'Name': 'btc-tracker'},
     user_data='''#!/bin/bash
-echo "########## Update system packages"
+
+echo "########## LOOK Update system packages"
 dnf update -y
 
-echo "USER_DATA_LOG ########## Install basic tools and dependencies"
-dnf install -y --allowerasing git wget gnupg2 pinentry pinentry-curses
+echo "########## Install basic tools and dependencies"
+dnf install -y git wget dnf-utils
 
-echo "USER_DATA_LOG ########## Install required dependencies for Guix"
-dnf install -y which glibc-langpack-en openssl ca-certificates
+echo "################# LOOK, DONE WITH INSTALL STEPS"
 
-echo "USER_DATA_LOG ########## Create the guix user and group"
-groupadd --system guixbuild
-for i in `seq -w 1 10`; do
-    useradd -g guixbuild -G guixbuild           \
-            -d /var/empty -s `which nologin`     \
-            -c "Guix build user $i" --system     \
-            "guixbuilder$i";
-done
+echo "########## Install Ruby"
+dnf install -y ruby3.2
 
-echo "USER_DATA_LOG ########## Initialize GPG"
-mkdir -p /root/.gnupg
-chmod 700 /root/.gnupg
-echo "allow-loopback-pinentry" > /root/.gnupg/gpg-agent.conf
-echo "pinentry-mode loopback" > /root/.gnupg/gpg.conf
+echo "[INIT] Installing PostgreSQL 16"
+dnf install -y postgresql16 postgresql16-server
 
-echo "USER_DATA_LOG ########## Start gpg-agent"
-gpg-agent --daemon
+echo "[INIT] Initializing PostgreSQL database"
+postgresql-setup initdb
 
-echo "USER_DATA_LOG ########## Import required GPG keys"
-wget "https://sv.gnu.org/people/viewgpg.php?user_id=127547" -O maxim.key
-wget "https://sv.gnu.org/people/viewgpg.php?user_id=15145" -O ludo.key
-gpg --batch --yes --import maxim.key
-gpg --batch --yes --import ludo.key
+echo "[INIT] Starting and enabling PostgreSQL service"
+systemctl enable postgresql
+systemctl start postgresql
 
-echo "USER_DATA_LOG ########## Download and run Guix installer"
-wget https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
-chmod +x guix-install.sh
-yes '' | ./guix-install.sh
+echo "[INIT] Configuring PostgreSQL local connections"
+cp /var/lib/pgsql/data/pg_hba.conf /var/lib/pgsql/data/pg_hba.conf.bak
+sed -i 's/ident/trust/g' /var/lib/pgsql/data/pg_hba.conf
+sed -i 's/peer/trust/g' /var/lib/pgsql/data/pg_hba.conf
+systemctl restart postgresql
 
-echo "USER_DATA_LOG ########## Clean up"
-rm -f maxim.key ludo.key
+echo "[INIT] Creating PostgreSQL user"
+su - postgres -c "createuser -s ec2-user"
 
-echo "USER_DATA_LOG ########## Install glibc-locales and set up environment for ec2-user"
-su - ec2-user -c "guix package -i glibc-locales"
+echo "[INIT] Installing Rails dependencies"
+dnf install -y ruby3.2-devel make gcc gcc-c++ redhat-rpm-config libyaml-devel
 
-echo "USER_DATA_LOG ########## Configure locale settings for root user"
-cat >> /root/.bashrc <<EOL
-export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
-export LANG="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
-EOL
+echo "[INIT] Installing Rails"
+gem install rails
 
-echo "USER_DATA_LOG ########## Configure locale settings for ec2-user"
-cat >> /home/ec2-user/.bashrc <<EOL
-export GUIX_LOCPATH="$HOME/.guix-profile/lib/locale"
-export LANG="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
-EOL
-
-echo "USER_DATA_LOG ########## Set proper ownership of ec2-user's .bashrc"
+echo "[INIT] Setting up environment"
+echo 'export PATH="$PATH:$HOME/.local/bin:/usr/local/bin"' >> /home/ec2-user/.bashrc
 chown ec2-user:ec2-user /home/ec2-user/.bashrc
 
-echo "USER_DATA_LOG ########## Source the environment for the current session"
-export GUIX_LOCPATH="/home/ec2-user/.guix-profile/lib/locale"
-export LANG="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
-
-echo "USER_DATA_LOG ########## Install Ruby, Rails, and PostgreSQL as ec2-user"
-su - ec2-user -c "guix package -i ruby ruby-rails postgresql"
-
-echo "USER_DATA_LOG ########## Initialize PostgreSQL - now with proper environment sourcing"
-su - ec2-user -c "bash -l -c 'mkdir -p ~/postgres-data && initdb -D ~/postgres-data'"
-
-echo "USER_DATA_LOG ########## Start PostgreSQL with proper environment"
-# su - ec2-user -c "bash -l -c 'postgres -D ~/postgres-data &'"
-
-echo "USER_DATA_LOG ########## Wait for PostgreSQL to start"
-# sleep 30
-
-echo "USER_DATA_LOG ########## Create database user with proper environment"
-# su - ec2-user -c "bash -l -c 'createuser -s ec2-user'"
-
-echo "USER_DATA_LOG ########## Source the new environment variables"
-# source /root/.bashrc
-
+echo "[INIT] Installation Complete"
 ''')
 
 # Export useful information
