@@ -13,3 +13,6 @@ __pycache__/
 .vscode/
 .idea/
 myenv/
+
+# DevOps
+deploy.sh

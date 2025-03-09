@@ -161,6 +161,15 @@ chown ec2-user:ec2-user /home/ec2-user/.bashrc
 echo "[INIT] Installation Complete"
 ''')
 
+# Add this to the script above later..
+# sudo dnf install -y postgresql-devel
+# bundle install
+# rails db:create db:migrate RAILS_ENV=production
+# rails assets:precompile RAILS_ENV=production
+# rails secret
+# export SECRET_KEY_BASE to output of `rails secret`
+# rails server -e production -p 3000 -b 0.0.0.0
+
 # Export useful information
 pulumi.export('instance_id', instance.id)
 pulumi.export('public_ip', instance.public_ip)
