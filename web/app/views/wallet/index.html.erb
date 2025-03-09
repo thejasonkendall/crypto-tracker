@@ -1,0 +1,18 @@
+<div class="wallet-info">
+  <h1>BTC Buddy - Track your BTC holdings!</h1>
+  
+  <h2>BTC Wallet Information</h2>
+  <p>Address/Xpub: <%= @wallet_address %></p>
+  
+  <div class="balance-info">
+    <p>Current Balance: <strong><%= @btc_balance %> BTC</strong></p>
+    <p>Current Value: <strong>$<%= sprintf('%.2f', @usd_value) %> USD</strong></p>
+    <p class="last-updated">Last updated: <%= Time.now.strftime("%Y-%m-%d %H:%M:%S") %></p>
+  </div>
+  
+  <% if flash[:error] %>
+    <div class="error">
+      <%= flash[:error] %>
+    </div>
+  <% end %>
+</div>

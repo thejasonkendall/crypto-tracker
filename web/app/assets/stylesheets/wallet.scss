@@ -1,0 +1,46 @@
+.wallet-info {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    
+    h1 {
+      color: #333;
+    }
+    
+    h2 {
+      color: #444;
+      margin-top: 30px;
+    }
+    
+    .balance-info {
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      padding: 15px;
+      margin-top: 20px;
+      
+      p {
+        margin: 10px 0;
+      }
+      
+      strong {
+        color: #0066cc;
+      }
+      
+      .last-updated {
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 15px;
+        border-top: 1px solid #ddd;
+        padding-top: 10px;
+      }
+    }
+    
+    .error {
+      color: #cc0000;
+      background-color: #ffeeee;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+  }
