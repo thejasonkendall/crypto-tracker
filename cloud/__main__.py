@@ -169,6 +169,32 @@ echo "[INIT] Installation Complete"
 # rails secret
 # export SECRET_KEY_BASE to output of `rails secret`
 # rails server -e production -p 3000 -b 0.0.0.0
+# sudo nano /etc/systemd/system/crypto-tracker.service
+# [Unit]
+# Description=Crypto Tracker Rails Application
+# After=network.target postgresql.service
+
+# [Service]
+# Type=simple
+# User=ec2-user
+# WorkingDirectory=/home/ec2-user/crypto-tracker
+# Environment=RAILS_ENV=production
+# Environment=SECRET_KEY_BASE=your_secret_key_base
+# ExecStart=/usr/bin/ruby3.2 /home/ec2-user/crypto-tracker/bin/rails server -p 3000 -b 0.0.0.0
+# Restart=on-failure
+# RestartSec=5
+# SyslogIdentifier=crypto-tracker
+
+# [Install]
+# WantedBy=multi-user.target
+
+# Replace your_secret_key_base with the secret key you generated earlier.
+# sudo systemctl daemon-reload
+# sudo systemctl enable crypto-tracker
+# sudo systemctl start crypto-tracker
+# sudo systemctl status crypto-tracker
+# sudo journalctl -u crypto-tracker
+# sudo systemctl restart crypto-tracker
 
 # Export useful information
 pulumi.export('instance_id', instance.id)
