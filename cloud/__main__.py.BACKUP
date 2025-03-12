@@ -7,8 +7,6 @@ region = config.get('region') or 'us-east-1'
 vpc_cidr = config.require('vpc_cidr')  # Not a secret
 subnet_cidr = config.require('subnet_cidr')  # Not a secret
 my_ip = config.require_secret('my_ip')  # This is a secret
-# Add repository URL config - you'll need to set this in your Pulumi config
-repo_url = config.get('repo_url') or 'https://github.com/yourusername/btc-tracker.git'
 
 # Create a new VPC
 vpc = ec2.Vpc(
@@ -105,7 +103,7 @@ key_pair = ec2.KeyPair(
     tags={'Name': 'btc-tracker-key'}
 )
 
-# Create the EC2 instance with modified user_data
+# Create the EC2 instance
 instance = ec2.Instance(
     'btc-tracker-instance',
     instance_type='t3.micro',
@@ -118,120 +116,99 @@ instance = ec2.Instance(
         'volumeType': 'gp3'
     },
     tags={'Name': 'btc-tracker'},
-    user_data=pulumi.Output.all(repo_url).apply(lambda args: f'''#!/bin/bash
-APP_DIR="/home/ec2-user/btc-tracker"
-REPO_URL="{args[0]}"
-LOG_FILE="/var/log/user-data.log"
+    user_data='''#!/bin/bash
 
-# Start logging
-exec > $LOG_FILE 2>&1
-echo "$(date) - Starting initialization script"
-
-echo "########## Update system packages"
+echo "########## LOOK Update system packages"
 dnf update -y
 
 echo "########## Install basic tools and dependencies"
 dnf install -y git wget dnf-utils
 
+echo "################# LOOK, DONE WITH INSTALL STEPS"
+
 echo "########## Install Ruby"
 dnf install -y ruby3.2
 
-echo "########## Installing PostgreSQL 16"
+echo "[INIT] Installing PostgreSQL 16"
 dnf install -y postgresql16 postgresql16-server
 
-echo "########## Initializing PostgreSQL database"
+echo "[INIT] Initializing PostgreSQL database"
 postgresql-setup initdb
 
-echo "########## Starting and enabling PostgreSQL service"
+echo "[INIT] Starting and enabling PostgreSQL service"
 systemctl enable postgresql
 systemctl start postgresql
 
-echo "########## Configuring PostgreSQL local connections"
+echo "[INIT] Configuring PostgreSQL local connections"
 cp /var/lib/pgsql/data/pg_hba.conf /var/lib/pgsql/data/pg_hba.conf.bak
 sed -i 's/ident/trust/g' /var/lib/pgsql/data/pg_hba.conf
 sed -i 's/peer/trust/g' /var/lib/pgsql/data/pg_hba.conf
 systemctl restart postgresql
 
-echo "########## Creating PostgreSQL user"
+echo "[INIT] Creating PostgreSQL user"
 su - postgres -c "createuser -s ec2-user"
 
-echo "########## Installing Rails dependencies"
-dnf install -y ruby3.2-devel make gcc gcc-c++ redhat-rpm-config libyaml-devel postgresql-devel nodejs
+echo "[INIT] Installing Rails dependencies"
+dnf install -y ruby3.2-devel make gcc gcc-c++ redhat-rpm-config libyaml-devel
 
-echo "########## Installing Rails"
-gem install rails bundler
+echo "[INIT] Installing Rails"
+gem install rails
 
-echo "########## Setting up environment"
+echo "[INIT] Setting up environment"
 echo 'export PATH="$PATH:$HOME/.local/bin:/usr/local/bin"' >> /home/ec2-user/.bashrc
 chown ec2-user:ec2-user /home/ec2-user/.bashrc
 
+echo "[INIT] Installing postgresql-devel"
+dnf install -y postgresql-devel
 
-echo "########## Cloning the repository"
-mkdir -p $APP_DIR
-git clone $REPO_URL $APP_DIR
-chown -R ec2-user:ec2-user $APP_DIR
-
-echo "########## Switching to ec2-user to setup the Rails application"
-su - ec2-user << 'USEREOF'
-APP_DIR="/home/ec2-user/btc-tracker
-cd $APP_DIR/web
-
-# Running bundle install
-echo "########## Running bundle install"
+echo "[INIT] Running bundle install"
 bundle install
 
-# Create database and run migrations
-echo "########## Setting up the database"
-RAILS_ENV=production bundle exec rails db:create db:migrate
+echo "[INIT] Running rails db:create db:migrate RAILS_ENV=production"
+rails db:create db:migrate RAILS_ENV=production
 
-# Precompile assets
-echo "########## Precompiling assets"
-RAILS_ENV=production bundle exec rails assets:precompile
+echo "[INIT] Running rails assets:precompile RAILS_ENV=production"
+rails assets:precompile RAILS_ENV=production
 
-# Generate a secret key and update systemd service
-echo "########## Generating Rails secret key"
-SECRET_KEY=$(RAILS_ENV=production bundle exec rails secret)
-echo "SECRET_KEY=$SECRET_KEY"
-USEREOF
+echo "[INIT] Running rails secret"
+export SECRET_KEY_BASE=$(rails secret)
 
+echo "[INIT] Staring rails server"
+rails server -e production -p 3000 -b 0.0.0.0
 
-echo "$(date) - Initialization script completed"
+echo "[INIT] Installation Complete"
 ''')
-)
-
-# Export useful information
-pulumi.export('instance_id', instance.id)
-pulumi.export('public_ip', instance.public_ip)
-pulumi.export('public_dns', instance.public_dns)
 
 
-# Deal with this later:
-# echo "########## Creating Rails application systemd service"
-# cat > /etc/systemd/system/btc-tracker.service << 'EOL'
+# Figure out how to setup the service later....in Pulumi
+# sudo nano /etc/systemd/system/crypto-tracker.service
 # [Unit]
-# Description=BTC Tracker Rails Application
+# Description=Crypto Tracker Rails Application
 # After=network.target postgresql.service
 
 # [Service]
 # Type=simple
 # User=ec2-user
-# WorkingDirectory=/home/ec2-user/btc-tracker
+# WorkingDirectory=/home/ec2-user/crypto-tracker
 # Environment=RAILS_ENV=production
-# Environment=SECRET_KEY_BASE=PLACEHOLDER_TO_BE_UPDATED
-# ExecStart=/usr/bin/ruby3.2 /home/ec2-user/btc-tracker/bin/rails server -p 3000 -b 0.0.0.0
+# Environment=SECRET_KEY_BASE=your_secret_key_base
+# ExecStart=/usr/bin/ruby3.2 /home/ec2-user/crypto-tracker/bin/rails server -p 3000 -b 0.0.0.0
 # Restart=on-failure
 # RestartSec=5
-# SyslogIdentifier=btc-tracker
+# SyslogIdentifier=crypto-tracker
 
 # [Install]
 # WantedBy=multi-user.target
-# EOL
 
-# echo "########## Enabling and starting the service"
-# systemctl daemon-reload
-# systemctl enable btc-tracker
-# systemctl start btc-tracker
+# Replace your_secret_key_base with the secret key you generated earlier.
+# sudo systemctl daemon-reload
+# sudo systemctl enable crypto-tracker
+# sudo systemctl start crypto-tracker
+# sudo systemctl status crypto-tracker
+# sudo journalctl -u crypto-tracker
+# sudo systemctl restart crypto-tracker
 
-# echo "########## Updating secret key in service file"
-# SECRET_KEY=$(su - ec2-user -c "cd $APP_DIR && RAILS_ENV=production bundle exec rails secret")
-# sed -i "s|PLACEHOLDER_TO_BE_UPDATED|$SECRET_KEY|g" /etc/systemd/system/btc-tracker.service
+# Export useful information
+pulumi.export('instance_id', instance.id)
+pulumi.export('public_ip', instance.public_ip)
+pulumi.export('public_dns', instance.public_dns)
