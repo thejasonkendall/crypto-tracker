@@ -172,32 +172,27 @@ git clone $REPO_URL $APP_DIR
 chown -R ec2-user:ec2-user $APP_DIR
 
 echo "########## Switching to ec2-user to setup the Rails application"
-su - ec2-user << EOF
-APP_DIR="/home/ec2-user/btc-tracker"
+su - ec2-user << 'USEREOF'
+APP_DIR="/home/ec2-user/btc-tracker
 cd $APP_DIR/web
 
 # Running bundle install
 echo "########## Running bundle install"
 bundle install
 
-# Generate a secret key first
-echo "########## Generating Rails secret key"
-SECRET_KEY=\$(bundle exec rails secret)
-echo "SECRET_KEY=\$SECRET_KEY"
-
-# Create credentials file
-echo "########## Creating credentials file"
-mkdir -p config/credentials
-echo "secret_key_base: \$SECRET_KEY" > config/credentials/production.yml
-
 # Create database and run migrations
 echo "########## Setting up the database"
-RAILS_ENV=production SECRET_KEY_BASE=\$SECRET_KEY bundle exec rails db:create db:migrate
+RAILS_ENV=production bundle exec rails db:create db:migrate
 
 # Precompile assets
 echo "########## Precompiling assets"
-RAILS_ENV=production SECRET_KEY_BASE=\$SECRET_KEY bundle exec rails assets:precompile
-EOF
+RAILS_ENV=production bundle exec rails assets:precompile
+
+# Generate a secret key and update systemd service
+echo "########## Generating Rails secret key"
+SECRET_KEY=$(RAILS_ENV=production bundle exec rails secret)
+echo "SECRET_KEY=$SECRET_KEY"
+USEREOF
 
 
 echo "$(date) - Initialization script completed"
